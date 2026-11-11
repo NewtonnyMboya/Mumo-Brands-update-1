@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
     var unlocked by remember { mutableStateOf(false) }
     var pin by remember { mutableStateOf("") }; var confirm by remember { mutableStateOf("") }; var error by remember { mutableStateOf("") }
     if (unlocked) content() else Surface(Modifier.fillMaxSize(),color=Soft) { Column(Modifier.fillMaxSize().padding(26.dp),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
-        Text("MB",fontSize=48.sp,fontWeight=FontWeight.Black,color=Magenta); Text("MUMO BRANDS",fontWeight=FontWeight.Bold,color=Navy,fontSize=22.sp); Text(if(configured) "Staff sign in" else "Create owner PIN",color=Ink)
+        Image(painterResource(R.drawable.mumo_logo),contentDescription="Mumo Brands company logo",modifier=Modifier.size(112.dp),contentScale=ContentScale.Fit); Text("MUMO BRANDS",fontWeight=FontWeight.Bold,color=Navy,fontSize=22.sp); Text(if(configured) "Staff sign in" else "Create owner PIN",color=Ink)
         Spacer(Modifier.height(18.dp)); OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(8)},label={Text("4–8 digit PIN")},singleLine=true)
         if(!configured) OutlinedTextField(confirm,{confirm=it.filter(Char::isDigit).take(8)},label={Text("Confirm PIN")},singleLine=true)
         if(error.isNotBlank()) Text(error,color=Magenta)
@@ -207,7 +207,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     ModalNavigationDrawer(drawerState=drawerState, gesturesEnabled=true,
         drawerContent={ ModalDrawerSheet {
             Column(Modifier.fillMaxWidth().background(Navy).padding(20.dp)) {
-                Text("MB",color=Magenta,fontSize=38.sp,fontWeight=FontWeight.Black)
+                Image(painterResource(R.drawable.mumo_logo),contentDescription="Mumo Brands logo",modifier=Modifier.size(76.dp),contentScale=ContentScale.Fit)
                 Text("MUMO BRANDS",color=Color.White,fontWeight=FontWeight.Bold)
                 Text("Printing & Branding Services",color=Color.White.copy(alpha=.8f),fontSize=12.sp)
             }
@@ -218,8 +218,9 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
                 bottomBar={ Column(Modifier.fillMaxWidth().background(Navy).padding(vertical=9.dp), horizontalAlignment=Alignment.CenterHorizontally) {
                     Text("MUMO BRANDS  •  Quality and perfection",color=Color.White,fontWeight=FontWeight.SemiBold,fontSize=12.sp)
                     Text("☎ 0741 167 612   •   Bazaar House (Kwa Kaswii), Kitui Stage, Kibwezi Town",color=Color.White,fontSize=10.sp)
-                    Text("Infinity Cyber Technologies",color=Color.White,fontSize=10.sp,fontWeight=FontWeight.SemiBold)
+                    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center) { Text("∞",color=Magenta,fontSize=19.sp,fontWeight=FontWeight.Bold); Spacer(Modifier.width(4.dp)); Text("Infinity Cyber Technologies",color=Color.White,fontSize=10.sp,fontWeight=FontWeight.SemiBold) }
                     Text("infinitycybertech@gmail.com  •  +254740889001",color=Color.White,fontSize=9.sp)
+                    Text("© 2026 Mumo Brands. All rights reserved.",color=Color.White.copy(alpha=.72f),fontSize=8.sp)
                 } }) { pad ->
                 Box(Modifier.padding(pad).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     when(page) {
