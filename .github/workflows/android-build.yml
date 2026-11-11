@@ -43,7 +43,12 @@ jobs:
             exit 1
           fi
           cp MainActivity.kt "$APP_SOURCE"
-          echo "Updated application source from repository MainActivity.kt: $APP_SOURCE"
+          APP_MAIN_DIR="$(dirname "$APP_SOURCE")"
+          while [ "$(basename "$APP_MAIN_DIR")" != "java" ]; do APP_MAIN_DIR="$(dirname "$APP_MAIN_DIR")"; done
+          APP_MAIN_DIR="$(dirname "$APP_MAIN_DIR")"
+          mkdir -p "$APP_MAIN_DIR/res/drawable"
+          cp mumo_logo.xml "$APP_MAIN_DIR/res/drawable/mumo_logo.xml"
+          echo "Updated application source and Mumo Brands logo drawable: $APP_MAIN_DIR"
       - name: Build debug APK
         run: |
           cd "$PROJECT_DIR"
