@@ -1,0 +1,43 @@
+name: Build Mumo Brands APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Locate Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find . -path '*/.gradle' -prune -o -name settings.gradle.kts -print -quit | grep -q .; then
+            PROJECT_SETTINGS="$(find . -path '*/.gradle' -prune -o -name settings.gradle.kts -print -quit)"
+            PROJECT_DIR="$(dirname "$PROJECT_SETTINGS")"
+          else
+            echo "No settings.gradle.kts found in repository."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Build debug APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle assembleDebug
+      - name: Locate and upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mumo-Brands-debug-apk
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
