@@ -34,6 +34,14 @@ jobs:
           PROJECT_DIR="$(dirname "$PROJECT_SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project located at $PROJECT_DIR"
+          APP_SOURCE="$(find "$PROJECT_DIR" -path '*/src/main/java/*/MainActivity.kt' -print -quit)"
+          if [ -z "$APP_SOURCE" ]; then
+            echo "Could not find app/src/main/java/.../MainActivity.kt in uploaded project"
+            find "$PROJECT_DIR" -maxdepth 6 -type f | head -100
+            exit 1
+          fi
+          cp MainActivity.kt "$APP_SOURCE"
+          echo "Updated application source from repository MainActivity.kt: $APP_SOURCE"
       - name: Build debug APK
         run: |
           cd "$PROJECT_DIR"
