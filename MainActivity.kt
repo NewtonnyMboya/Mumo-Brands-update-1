@@ -47,6 +47,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import android.graphics.Color as AndroidColor
+import android.view.View
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -201,6 +206,11 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     val systemDark = isSystemInDarkTheme()
     val darkMode = when(themeMode) { "dark" -> true; "light" -> false; else -> systemDark }
     val themeLabel = when(themeMode) { "system" -> "Theme: System"; "light" -> "Theme: Light"; else -> "Theme: Dark" }
+    SideEffect {
+        activity.window.navigationBarColor = if (darkMode) AndroidColor.BLACK else AndroidColor.WHITE
+        activity.window.statusBarColor = if (darkMode) AndroidColor.BLACK else android.graphics.Color.rgb(23,22,83)
+        activity.window.decorView.systemUiVisibility = if (darkMode) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+    }
     val menu=listOf("Dashboard","New Orders","Customers","Clothing Inventory","Printing Services","Payments","Stock Movements","Receipts & Invoices","Reports",themeLabel,"Settings")
     BackHandler(enabled=drawerState.isOpen || page!="Dashboard") { if(drawerState.isOpen) scope.launch { drawerState.close() } else page="Dashboard" }
     MaterialTheme(colorScheme=if(darkMode) darkColorScheme(primary=Magenta,secondary=Navy,background=Color(0xFF121212),surface=Color(0xFF1E1E1E),onBackground=Color.White,onSurface=Color.White) else lightColorScheme(primary=Magenta,secondary=Navy,background=Soft,surface=Color.White)) {
@@ -249,7 +259,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     val orders=db.count("orders"); val stock=db.count("stock"); val customers=db.count("customers")
     LazyColumn(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
         item { Card(shape=RoundedCornerShape(22.dp),colors=CardDefaults.cardColors(containerColor=Navy)) { Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment=Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("MUMO BRANDS",color=Color.White,fontWeight=FontWeight.Black,fontSize=20.sp);Text("Quality and perfection",color=Color.White.copy(alpha=.8f),fontSize=12.sp) }; Image(painterResource(R.drawable.company_logo),contentDescription="Mumo Brands company logo",contentScale=ContentScale.Crop,modifier=Modifier.size(76.dp).background(Color.White,RoundedCornerShape(12.dp))) }
+            Row(verticalAlignment=Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("MUMO BRANDS",color=Color.White,fontWeight=FontWeight.Black,fontSize=20.sp);Text("Quality and perfection",color=Color.White.copy(alpha=.8f),fontSize=12.sp) }; Image(painterResource(R.drawable.mumo_logo),contentDescription="Mumo Brands company logo",contentScale=ContentScale.Fit,modifier=Modifier.size(76.dp).background(Color.White,RoundedCornerShape(12.dp))) }
             Spacer(Modifier.height(18.dp));Text("Business command centre",color=Color.White,fontSize=22.sp,fontWeight=FontWeight.Bold);Text("Manage customers, production, garments and stock",color=Color.White.copy(alpha=.8f),fontSize=12.sp)
         } } }
         item { Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) { StatCard("Orders",orders.toString(),Icons.Default.ReceiptLong,Modifier.weight(1f));StatCard("Stock items",stock.toString(),Icons.Default.Inventory2,Modifier.weight(1f)) } }
@@ -290,9 +300,70 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
 }
 @Composable fun InfoPage(title:String,body:String){Column(Modifier.padding(20.dp)){Text(title,fontSize=21.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.height(12.dp));Text(body,color=Ink.copy(alpha=.75f))}}
 @Composable fun EmptyState(title:String,body:String){Column(Modifier.fillMaxWidth().padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.Inventory2,null,tint=Magenta,modifier=Modifier.size(38.dp));Text(title,fontWeight=FontWeight.Bold);Text(body,fontSize=12.sp,color=Ink.copy(alpha=.6f))}}
-@Composable fun OrderDialog(close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit){var customer by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var item by remember{mutableStateOf("T-shirt")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("1")};var service by remember{mutableStateOf("T-shirt printing")};var due by remember{mutableStateOf("")};var total by remember{mutableStateOf("0")};var paid by remember{mutableStateOf("0")};AlertDialog(onDismissRequest=close,title={Text("Create customer order")},text={Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()).imePadding(),verticalArrangement=Arrangement.spacedBy(10.dp)){Field("Customer name",customer){customer=it};Field("Phone number",phone){phone=it};Field("Garment / product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Branding service",service){service=it};Field("Due date",due){due=it};Field("Total (KES)",total){total=it};Field("Deposit paid (KES)",paid){paid=it}}},confirmButton={Button(onClick={if(customer.isNotBlank()&&item.isNotBlank()){save(customer,phone,item,size,color,qty.toIntOrNull()?.coerceAtLeast(1)?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0);close()}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save order")} },dismissButton={TextButton(onClick=close){Text("Cancel")}}) }
-@Composable fun StockDialog(close:()->Unit,save:(String,String,String,String,Int,Int)->Unit){var item by remember{mutableStateOf("")};var cat by remember{mutableStateOf("T-shirts")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("0")};var reorder by remember{mutableStateOf("5")};AlertDialog(onDismissRequest=close,title={Text("Add inventory item")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Field("Item name",item){item=it};Field("Category",cat){cat=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Low-stock threshold",reorder){reorder=it}}},confirmButton={Button(onClick={if(item.isNotBlank()){save(item,cat,size,color,qty.toIntOrNull()?:0,reorder.toIntOrNull()?:5);close()}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save stock")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})}
-@Composable fun Field(label:String,value:String,onChange:(String)->Unit){OutlinedTextField(value=value,onValueChange=onChange,label={Text(label)},singleLine=true,minLines=1,maxLines=1,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp))}
+@Composable fun AdaptiveFormDialog(
+    title:String,
+    close:()->Unit,
+    confirmLabel:String,
+    onConfirm:()->Unit,
+    content:@Composable ColumnScope.()->Unit
+) {
+    val screenHeight=LocalConfiguration.current.screenHeightDp
+    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        Surface(
+            modifier=Modifier.fillMaxWidth().widthIn(max=560.dp).heightIn(max=(screenHeight*0.84f).dp).imePadding(),
+            shape=RoundedCornerShape(24.dp),
+            color=MaterialTheme.colorScheme.surface,
+            tonalElevation=6.dp
+        ) {
+            Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                Text(title,fontSize=22.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(14.dp))
+                Column(
+                    Modifier.weight(1f,fill=false).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement=Arrangement.spacedBy(12.dp),
+                    content=content
+                )
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
+                    TextButton(onClick=close){Text("Cancel")}
+                    Spacer(Modifier.width(8.dp))
+                    Button(onClick=onConfirm,colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text(confirmLabel)}
+                }
+            }
+        }
+    }
+}
+@Composable fun OrderDialog(close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit) {
+    var customer by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var item by remember{mutableStateOf("T-shirt")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("1")};var service by remember{mutableStateOf("T-shirt printing")};var due by remember{mutableStateOf("")};var total by remember{mutableStateOf("0")};var paid by remember{mutableStateOf("0")}
+    var error by remember{mutableStateOf("")}
+    AdaptiveFormDialog("Create customer order",close,"Save order",{
+        val parsedTotal=total.toDoubleOrNull();val parsedPaid=paid.toDoubleOrNull()
+        if(customer.isBlank()||item.isBlank()) error="Enter the customer name and product"
+        else if(parsedTotal==null||parsedPaid==null||!parsedTotal.isFinite()||!parsedPaid.isFinite()||parsedTotal<0||parsedPaid<0||parsedPaid>parsedTotal) error="Enter valid amounts; deposit cannot exceed the order total"
+        else { save(customer.trim(),phone.trim(),item.trim(),size.trim(),color.trim(),qty.toIntOrNull()?.coerceAtLeast(1)?:1,service.trim(),due.trim(),parsedTotal,parsedPaid);close() }
+    }) {
+        Field("Customer name",customer){customer=it}
+        Field("Phone number",phone){phone=it}
+        Field("Garment / product",item){item=it}
+        Field("Size",size){size=it}
+        Field("Colour",color){color=it}
+        Field("Quantity",qty){qty=it}
+        Field("Branding service",service){service=it}
+        Field("Due date",due){due=it}
+        Field("Total (KES)",total){total=it}
+        Field("Deposit paid (KES)",paid){paid=it}
+        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
+    }
+}
+@Composable fun StockDialog(close:()->Unit,save:(String,String,String,String,Int,Int)->Unit) {
+    var item by remember{mutableStateOf("")};var cat by remember{mutableStateOf("T-shirts")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("0")};var reorder by remember{mutableStateOf("5")}
+    AdaptiveFormDialog("Add inventory item",close,"Save stock",{
+        if(item.isNotBlank()) { save(item.trim(),cat.trim(),size.trim(),color.trim(),qty.toIntOrNull()?.coerceAtLeast(0)?:0,reorder.toIntOrNull()?.coerceAtLeast(0)?:5);close() }
+    }) {
+        Field("Item name",item){item=it};Field("Category",cat){cat=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Low-stock threshold",reorder){reorder=it}
+    }
+}
+@Composable fun Field(label:String,value:String,onChange:(String)->Unit){OutlinedTextField(value=value,onValueChange=onChange,label={Text(label)},singleLine=true,minLines=1,maxLines=1,modifier=Modifier.fillMaxWidth())}
 @Composable fun OrderRecordsPage(db:BusinessDb,refresh:Int,add:()->Unit,print:(Int)->Unit,delete:(Int)->Unit,showAll:Boolean=false) {
     var edit by remember { mutableStateOf<List<String>?>(null) }
     var deleteId by remember { mutableIntStateOf(0) }
@@ -335,7 +406,18 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
 
 @Composable fun OrderEditDialog(d:List<String>,close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit) {
     var c by remember{mutableStateOf(d[1])};var p by remember{mutableStateOf(d[2])};var item by remember{mutableStateOf(d[3])};var size by remember{mutableStateOf(d[4])};var color by remember{mutableStateOf(d[5])};var qty by remember{mutableStateOf(d[6])};var service by remember{mutableStateOf(d[7])};var due by remember{mutableStateOf(d[8])};var total by remember{mutableStateOf(d[9])};var paid by remember{mutableStateOf(d[10])}
-    AlertDialog(onDismissRequest=close,title={Text("Edit order #${d[0]}")},text={Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()).imePadding(),verticalArrangement=Arrangement.spacedBy(10.dp)){Field("Customer",c){c=it};Field("Phone",p){p=it};Field("Product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Service",service){service=it};Field("Due date",due){due=it};Field("Total KES",total){total=it};Text("Payments already recorded: KES $paid",fontWeight=FontWeight.SemiBold,color=Magenta);Text("To add a deposit or settle the balance, use the Payments menu. Editing an order will not rewrite its payment history.",fontSize=11.sp,color=Ink.copy(alpha=.7f))}},confirmButton={Button(onClick={save(c,p,item,size,color,qty.toIntOrNull()?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0)},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save changes")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})
+    var error by remember{mutableStateOf("")}
+    AdaptiveFormDialog("Edit order #${d[0]}",close,"Save changes",{
+        val parsedTotal=total.toDoubleOrNull()
+        if(c.isBlank()||item.isBlank()) error="Customer and product are required"
+        else if(parsedTotal==null||!parsedTotal.isFinite()||parsedTotal<0) error="Enter a valid non-negative order total"
+        else { save(c.trim(),p.trim(),item.trim(),size.trim(),color.trim(),qty.toIntOrNull()?.coerceAtLeast(1)?:1,service.trim(),due.trim(),parsedTotal,paid.toDoubleOrNull()?:0.0);close() }
+    }) {
+        Field("Customer",c){c=it};Field("Phone",p){p=it};Field("Product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Service",service){service=it};Field("Due date",due){due=it};Field("Total KES",total){total=it}
+        Text("Payments already recorded: KES $paid",fontWeight=FontWeight.SemiBold,color=Magenta)
+        Text("To add a deposit or settle the balance, use the Payments menu. Editing an order will not rewrite its payment history.",fontSize=11.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.7f))
+        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
+    }
 }
 
 @Composable fun StockRecordsPage(db:BusinessDb,refresh:Int,add:()->Unit,move:(Int,String,Int,String)->Unit,delete:(Int)->Unit) {
