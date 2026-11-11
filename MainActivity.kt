@@ -24,10 +24,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -36,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -193,8 +197,12 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     var showOrder by remember { mutableStateOf(false) }
     var showStock by remember { mutableStateOf(false) }
     val appearancePrefs=activity.getSharedPreferences("mumo_appearance",Context.MODE_PRIVATE)
-    var darkMode by remember { mutableStateOf(appearancePrefs.getBoolean("dark_mode",false)) }
-    val menu=listOf("Dashboard","New Orders","Customers","Clothing Inventory","Printing Services","Payments","Stock Movements","Receipts & Invoices","Reports",if(darkMode) "Switch to Light Mode" else "Switch to Dark Mode","Settings")
+    var themeMode by remember { mutableStateOf(appearancePrefs.getString("theme_mode", "system") ?: "system") }
+    val systemDark = isSystemInDarkTheme()
+    val darkMode = when(themeMode) { "dark" -> true; "light" -> false; else -> systemDark }
+    val themeLabel = when(themeMode) { "system" -> "Theme: System"; "light" -> "Theme: Light"; else -> "Theme: Dark" }
+    val menu=listOf("Dashboard","New Orders","Customers","Clothing Inventory","Printing Services","Payments","Stock Movements","Receipts & Invoices","Reports",themeLabel,"Settings")
+    BackHandler(enabled=drawerState.isOpen || page!="Dashboard") { if(drawerState.isOpen) scope.launch { drawerState.close() } else page="Dashboard" }
     MaterialTheme(colorScheme=if(darkMode) darkColorScheme(primary=Magenta,secondary=Navy,background=Color(0xFF121212),surface=Color(0xFF1E1E1E),onBackground=Color.White,onSurface=Color.White) else lightColorScheme(primary=Magenta,secondary=Navy,background=Soft,surface=Color.White)) {
     ModalNavigationDrawer(drawerState=drawerState, gesturesEnabled=true,
         drawerContent={ ModalDrawerSheet {
@@ -203,7 +211,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
                 Text("MUMO BRANDS",color=Color.White,fontWeight=FontWeight.Bold)
                 Text("Printing & Branding Services",color=Color.White.copy(alpha=.8f),fontSize=12.sp)
             }
-            menu.forEach { label -> NavigationDrawerItem(label= { Text(label) }, selected=page==label, onClick={if(label=="Switch to Light Mode" || label=="Switch to Dark Mode"){darkMode=!darkMode;appearancePrefs.edit().putBoolean("dark_mode",darkMode).apply()}else page=label;scope.launch { drawerState.close() }}, icon={Icon(menuIcon(label),null)}, modifier=Modifier.padding(horizontal=10.dp)) }
+            menu.forEach { label -> NavigationDrawerItem(label= { Text(label) }, selected=page==label, onClick={if(label.startsWith("Theme:")){themeMode=when(themeMode){"system"->"light";"light"->"dark";else->"system"};appearancePrefs.edit().putString("theme_mode",themeMode).apply()}else page=label;scope.launch { drawerState.close() }}, icon={Icon(if(label.startsWith("Theme:")) Icons.Default.Brightness6 else menuIcon(label),null)}, modifier=Modifier.padding(horizontal=10.dp)) }
         } },
         content={
             Scaffold(topBar={ TopAppBar(title={ Column { Text("MUMO BRANDS",fontWeight=FontWeight.Bold,color=Color.White);Text(page,fontSize=12.sp,color=Color.White.copy(alpha=.8f)) } }, navigationIcon={ IconButton(onClick={scope.launch { drawerState.open() }}) { Icon(Icons.Default.Menu,"Home menu",tint=Color.White) } }, colors=TopAppBarDefaults.topAppBarColors(containerColor=Navy)) },
@@ -281,9 +289,9 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
 }
 @Composable fun InfoPage(title:String,body:String){Column(Modifier.padding(20.dp)){Text(title,fontSize=21.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.height(12.dp));Text(body,color=Ink.copy(alpha=.75f))}}
 @Composable fun EmptyState(title:String,body:String){Column(Modifier.fillMaxWidth().padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.Inventory2,null,tint=Magenta,modifier=Modifier.size(38.dp));Text(title,fontWeight=FontWeight.Bold);Text(body,fontSize=12.sp,color=Ink.copy(alpha=.6f))}}
-@Composable fun OrderDialog(close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit){var customer by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var item by remember{mutableStateOf("T-shirt")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("1")};var service by remember{mutableStateOf("T-shirt printing")};var due by remember{mutableStateOf("")};var total by remember{mutableStateOf("0")};var paid by remember{mutableStateOf("0")};AlertDialog(onDismissRequest=close,title={Text("Create customer order")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Field("Customer name",customer){customer=it};Field("Phone number",phone){phone=it};Field("Garment / product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Branding service",service){service=it};Field("Due date",due){due=it};Field("Total (KES)",total){total=it};Field("Deposit paid (KES)",paid){paid=it}}},confirmButton={Button(onClick={if(customer.isNotBlank()&&item.isNotBlank()){save(customer,phone,item,size,color,qty.toIntOrNull()?.coerceAtLeast(1)?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0);close()}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save order")} },dismissButton={TextButton(onClick=close){Text("Cancel")}}) }
+@Composable fun OrderDialog(close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit){var customer by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var item by remember{mutableStateOf("T-shirt")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("1")};var service by remember{mutableStateOf("T-shirt printing")};var due by remember{mutableStateOf("")};var total by remember{mutableStateOf("0")};var paid by remember{mutableStateOf("0")};AlertDialog(onDismissRequest=close,title={Text("Create customer order")},text={Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()).imePadding(),verticalArrangement=Arrangement.spacedBy(10.dp)){Field("Customer name",customer){customer=it};Field("Phone number",phone){phone=it};Field("Garment / product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Branding service",service){service=it};Field("Due date",due){due=it};Field("Total (KES)",total){total=it};Field("Deposit paid (KES)",paid){paid=it}}},confirmButton={Button(onClick={if(customer.isNotBlank()&&item.isNotBlank()){save(customer,phone,item,size,color,qty.toIntOrNull()?.coerceAtLeast(1)?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0);close()}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save order")} },dismissButton={TextButton(onClick=close){Text("Cancel")}}) }
 @Composable fun StockDialog(close:()->Unit,save:(String,String,String,String,Int,Int)->Unit){var item by remember{mutableStateOf("")};var cat by remember{mutableStateOf("T-shirts")};var size by remember{mutableStateOf("M")};var color by remember{mutableStateOf("")};var qty by remember{mutableStateOf("0")};var reorder by remember{mutableStateOf("5")};AlertDialog(onDismissRequest=close,title={Text("Add inventory item")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Field("Item name",item){item=it};Field("Category",cat){cat=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Low-stock threshold",reorder){reorder=it}}},confirmButton={Button(onClick={if(item.isNotBlank()){save(item,cat,size,color,qty.toIntOrNull()?:0,reorder.toIntOrNull()?:5);close()}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save stock")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})}
-@Composable fun Field(label:String,value:String,onChange:(String)->Unit){OutlinedTextField(value,onChange,label={Text(label)},singleLine=true,modifier=Modifier.fillMaxWidth())}
+@Composable fun Field(label:String,value:String,onChange:(String)->Unit){OutlinedTextField(value=value,onValueChange=onChange,label={Text(label)},singleLine=true,minLines=1,maxLines=1,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp))}
 @Composable fun OrderRecordsPage(db:BusinessDb,refresh:Int,add:()->Unit,print:(Int)->Unit,delete:(Int)->Unit,showAll:Boolean=false) {
     var edit by remember { mutableStateOf<List<String>?>(null) }
     var deleteId by remember { mutableIntStateOf(0) }
@@ -326,7 +334,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
 
 @Composable fun OrderEditDialog(d:List<String>,close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit) {
     var c by remember{mutableStateOf(d[1])};var p by remember{mutableStateOf(d[2])};var item by remember{mutableStateOf(d[3])};var size by remember{mutableStateOf(d[4])};var color by remember{mutableStateOf(d[5])};var qty by remember{mutableStateOf(d[6])};var service by remember{mutableStateOf(d[7])};var due by remember{mutableStateOf(d[8])};var total by remember{mutableStateOf(d[9])};var paid by remember{mutableStateOf(d[10])}
-    AlertDialog(onDismissRequest=close,title={Text("Edit order #${d[0]}")},text={Column(Modifier.heightIn(max=440.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Field("Customer",c){c=it};Field("Phone",p){p=it};Field("Product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Service",service){service=it};Field("Due date",due){due=it};Field("Total KES",total){total=it};Text("Payments already recorded: KES $paid",fontWeight=FontWeight.SemiBold,color=Magenta);Text("To add a deposit or settle the balance, use the Payments menu. Editing an order will not rewrite its payment history.",fontSize=11.sp,color=Ink.copy(alpha=.7f))}},confirmButton={Button(onClick={save(c,p,item,size,color,qty.toIntOrNull()?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0)},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save changes")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})
+    AlertDialog(onDismissRequest=close,title={Text("Edit order #${d[0]}")},text={Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()).imePadding(),verticalArrangement=Arrangement.spacedBy(10.dp)){Field("Customer",c){c=it};Field("Phone",p){p=it};Field("Product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Service",service){service=it};Field("Due date",due){due=it};Field("Total KES",total){total=it};Text("Payments already recorded: KES $paid",fontWeight=FontWeight.SemiBold,color=Magenta);Text("To add a deposit or settle the balance, use the Payments menu. Editing an order will not rewrite its payment history.",fontSize=11.sp,color=Ink.copy(alpha=.7f))}},confirmButton={Button(onClick={save(c,p,item,size,color,qty.toIntOrNull()?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0)},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save changes")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})
 }
 
 @Composable fun StockRecordsPage(db:BusinessDb,refresh:Int,add:()->Unit,move:(Int,String,Int,String)->Unit,delete:(Int)->Unit) {
