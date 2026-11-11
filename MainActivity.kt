@@ -57,7 +57,7 @@ class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db",
         db.execSQL("CREATE TABLE orders(id INTEGER PRIMARY KEY AUTOINCREMENT, customer TEXT NOT NULL, phone TEXT, item TEXT NOT NULL, size TEXT, color TEXT, qty INTEGER NOT NULL, service TEXT, due TEXT, total REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'Received', notes TEXT)")
         db.execSQL("CREATE TABLE stock(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, category TEXT, size TEXT, color TEXT, qty INTEGER NOT NULL DEFAULT 0, reorder INTEGER NOT NULL DEFAULT 5, cost REAL NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE customers(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, email TEXT, notes TEXT)")
-        db.execSQL("CREATE TABLE payments(id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, amount REAL, method TEXT, paid_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        db.execSQL("CREATE TABLE payments(id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, amount REAL, method TEXT, paid_at TEXT DEFAULT CURRENT_TIMESTAMP, transaction_ref TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'Recorded')")
         db.execSQL("CREATE TABLE stock_movements(id INTEGER PRIMARY KEY AUTOINCREMENT, stock_id INTEGER NOT NULL, movement TEXT NOT NULL, quantity INTEGER NOT NULL, reason TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -112,6 +112,7 @@ class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db",
         if (id > 0 && qty > 0) moveStock(id, "IN", qty, "Opening stock")
     }
     fun updateOrder(id:Int, customer:String, phone:String, item:String, size:String, color:String, qty:Int, service:String, due:String, total:Double, paid:Double) {
+        require(total.isFinite() && paid.isFinite() && total >= 0.0 && paid >= 0.0 && paid <= total) { "Paid amount cannot exceed the order total" }
         val v=ContentValues().apply { put("customer",customer);put("phone",phone);put("item",item);put("size",size);put("color",color);put("qty",qty);put("service",service);put("due",due);put("total",total);put("paid",paid) }
         writableDatabase.update("orders",v,"id=?",arrayOf(id.toString()))
     }
