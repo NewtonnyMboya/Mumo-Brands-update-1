@@ -52,7 +52,7 @@ private val Magenta = Color(0xFFD62983)
 private val Ink = Color(0xFF20213A)
 private val Soft = Color(0xFFF4F3FA)
 
-class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db", null, 3) {
+class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE orders(id INTEGER PRIMARY KEY AUTOINCREMENT, customer TEXT NOT NULL, phone TEXT, item TEXT NOT NULL, size TEXT, color TEXT, qty INTEGER NOT NULL, service TEXT, due TEXT, total REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'Received', notes TEXT)")
         db.execSQL("CREATE TABLE stock(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, category TEXT, size TEXT, color TEXT, qty INTEGER NOT NULL DEFAULT 0, reorder INTEGER NOT NULL DEFAULT 5, cost REAL NOT NULL DEFAULT 0)")
@@ -66,6 +66,7 @@ class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db",
             db.execSQL("ALTER TABLE payments ADD COLUMN transaction_ref TEXT NOT NULL DEFAULT ''")
             db.execSQL("ALTER TABLE payments ADD COLUMN status TEXT NOT NULL DEFAULT 'Recorded'")
         }
+        if (oldVersion < 4) db.execSQL("CREATE INDEX IF NOT EXISTS idx_payments_order_date ON payments(order_id, paid_at)")
     }
     fun addOrder(customer:String, phone:String, item:String, size:String, color:String, qty:Int, service:String, due:String, total:Double, paid:Double) {
         val v=ContentValues().apply { put("customer",customer);put("phone",phone);put("item",item);put("size",size);put("color",color);put("qty",qty);put("service",service);put("due",due);put("total",total);put("paid",paid) }
@@ -92,7 +93,12 @@ class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db",
             }
             val balance=(order.first-order.second).coerceAtLeast(0.0)
             require(amount <= balance + 0.000001) { "Payment exceeds the outstanding balance" }
-            val p=ContentValues().apply { put("order_id",orderId);put("amount",amount);put("method",method);put("transaction_ref",reference.trim());put("status","Recorded") }
+            val cleanReference=reference.trim()
+            if (cleanReference.isNotEmpty()) {
+                val duplicate=db.rawQuery("SELECT COUNT(*) FROM payments WHERE lower(method)=lower(?) AND lower(transaction_ref)=lower(?) AND trim(transaction_ref)<>''",arrayOf(method,cleanReference)).use { it.moveToFirst() && it.getInt(0)>0 }
+                require(!duplicate) { "This transaction reference has already been recorded for $method" }
+            }
+            val p=ContentValues().apply { put("order_id",orderId);put("amount",amount);put("method",method);put("transaction_ref",cleanReference);put("status","Recorded") }
             db.insertOrThrow("payments",null,p)
             val update=ContentValues().apply { put("paid",order.second+amount) }
             db.update("orders",update,"id=?",arrayOf(orderId.toString()))
@@ -113,8 +119,16 @@ class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db",
     }
     fun updateOrder(id:Int, customer:String, phone:String, item:String, size:String, color:String, qty:Int, service:String, due:String, total:Double, paid:Double) {
         require(total.isFinite() && paid.isFinite() && total >= 0.0 && paid >= 0.0 && paid <= total) { "Paid amount cannot exceed the order total" }
-        val v=ContentValues().apply { put("customer",customer);put("phone",phone);put("item",item);put("size",size);put("color",color);put("qty",qty);put("service",service);put("due",due);put("total",total);put("paid",paid) }
-        writableDatabase.update("orders",v,"id=?",arrayOf(id.toString()))
+        require(total.isFinite() && total >= 0.0) { "Order total must be a valid non-negative amount" }
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            val recordedPaid=db.rawQuery("SELECT paid FROM orders WHERE id=?",arrayOf(id.toString())).use { c -> require(c.moveToFirst()) { "Order not found" }; c.getDouble(0) }
+            require(total + 0.000001 >= recordedPaid) { "Order total cannot be less than payments already recorded. Record a refund or correction separately." }
+            val v=ContentValues().apply { put("customer",customer);put("phone",phone);put("item",item);put("size",size);put("color",color);put("qty",qty);put("service",service);put("due",due);put("total",total);put("paid",recordedPaid) }
+            db.update("orders",v,"id=?",arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
     fun updateStock(id:Int,item:String,category:String,size:String,color:String,reorder:Int) { val v=ContentValues().apply { put("item",item);put("category",category);put("size",size);put("color",color);put("reorder",reorder) }; writableDatabase.update("stock",v,"id=?",arrayOf(id.toString())) }
     fun deleteRecord(table:String,id:Int) { require(table in listOf("orders","stock","customers")); writableDatabase.delete(table,"id=?",arrayOf(id.toString())) }
@@ -134,7 +148,7 @@ class BusinessDb(context: Context) : SQLiteOpenHelper(context, "mumo_brands.db",
     fun orderDetails(id:Int):List<String>? = readableDatabase.rawQuery("SELECT id,customer,phone,item,size,color,qty,service,due,total,paid,status FROM orders WHERE id=?",arrayOf(id.toString())).use { c -> if(c.moveToFirst()) (0 until c.columnCount).map { c.getString(it) ?: "" } else null }
     fun stockDetails(id:Int):List<String>? = readableDatabase.rawQuery("SELECT id,item,category,size,color,qty,reorder FROM stock WHERE id=?",arrayOf(id.toString())).use { c -> if(c.moveToFirst()) (0 until c.columnCount).map { c.getString(it) ?: "" } else null }
     fun movements():List<List<String>> { val out=mutableListOf<List<String>>(); readableDatabase.rawQuery("SELECT m.id,s.item,m.movement,m.quantity,m.reason,m.created_at FROM stock_movements m LEFT JOIN stock s ON s.id=m.stock_id ORDER BY m.id DESC",null).use { c -> while(c.moveToNext()) out.add((0 until c.columnCount).map { c.getString(it) ?: "" }) }; return out }
-    fun csv(table:String):String { require(table in listOf("orders","stock","customers","stock_movements")); val out=StringBuilder(); readableDatabase.rawQuery("SELECT * FROM $table ORDER BY id",null).use { c -> out.append((0 until c.columnCount).joinToString(",") { csvCell(c.getColumnName(it)) }).append('\n'); while(c.moveToNext()) out.append((0 until c.columnCount).joinToString(",") { csvCell(c.getString(it) ?: "") }).append('\n') }; return out.toString() }
+    fun csv(table:String):String { require(table in listOf("orders","stock","customers","stock_movements","payments")); val out=StringBuilder(); readableDatabase.rawQuery("SELECT * FROM $table ORDER BY id",null).use { c -> out.append((0 until c.columnCount).joinToString(",") { csvCell(c.getColumnName(it)) }).append('\n'); while(c.moveToNext()) out.append((0 until c.columnCount).joinToString(",") { csvCell(c.getString(it) ?: "") }).append('\n') }; return out.toString() }
     private fun csvCell(v:String)="\""+v.replace("\"","\"\"")+"\""
     fun rows(table:String):List<List<String>> {
         val out= mutableListOf<List<String>>()
@@ -180,8 +194,8 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     var showStock by remember { mutableStateOf(false) }
     val appearancePrefs=activity.getSharedPreferences("mumo_appearance",Context.MODE_PRIVATE)
     var darkMode by remember { mutableStateOf(appearancePrefs.getBoolean("dark_mode",false)) }
-    val menu=listOf("Dashboard","New Orders","Customers","Clothing Inventory","Printing Services","Payments","Stock Movements","Receipts & Invoices","Reports","Dark / Light Mode","Settings")
-    MaterialTheme(colorScheme=if(darkMode) darkColorScheme(primary=Magenta,secondary=Navy,background=Color(0xFF121212),surface=Color(0xFF1E1E1E),onBackground=Color.White,onSurface=Color.White) else lightColorScheme(primary=Magenta,secondary=Navy)) {
+    val menu=listOf("Dashboard","New Orders","Customers","Clothing Inventory","Printing Services","Payments","Stock Movements","Receipts & Invoices","Reports",if(darkMode) "Switch to Light Mode" else "Switch to Dark Mode","Settings")
+    MaterialTheme(colorScheme=if(darkMode) darkColorScheme(primary=Magenta,secondary=Navy,background=Color(0xFF121212),surface=Color(0xFF1E1E1E),onBackground=Color.White,onSurface=Color.White) else lightColorScheme(primary=Magenta,secondary=Navy,background=Soft,surface=Color.White)) {
     ModalNavigationDrawer(drawerState=drawerState, gesturesEnabled=true,
         drawerContent={ ModalDrawerSheet {
             Column(Modifier.fillMaxWidth().background(Navy).padding(20.dp)) {
@@ -189,16 +203,17 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
                 Text("MUMO BRANDS",color=Color.White,fontWeight=FontWeight.Bold)
                 Text("Printing & Branding Services",color=Color.White.copy(alpha=.8f),fontSize=12.sp)
             }
-            menu.forEach { label -> NavigationDrawerItem(label= { Text(label) }, selected=page==label, onClick={if(label=="Dark / Light Mode"){darkMode=!darkMode;appearancePrefs.edit().putBoolean("dark_mode",darkMode).apply()}else page=label;scope.launch { drawerState.close() }}, icon={Icon(menuIcon(label),null)}, modifier=Modifier.padding(horizontal=10.dp)) }
+            menu.forEach { label -> NavigationDrawerItem(label= { Text(label) }, selected=page==label, onClick={if(label=="Switch to Light Mode" || label=="Switch to Dark Mode"){darkMode=!darkMode;appearancePrefs.edit().putBoolean("dark_mode",darkMode).apply()}else page=label;scope.launch { drawerState.close() }}, icon={Icon(menuIcon(label),null)}, modifier=Modifier.padding(horizontal=10.dp)) }
         } },
         content={
             Scaffold(topBar={ TopAppBar(title={ Column { Text("MUMO BRANDS",fontWeight=FontWeight.Bold,color=Color.White);Text(page,fontSize=12.sp,color=Color.White.copy(alpha=.8f)) } }, navigationIcon={ IconButton(onClick={scope.launch { drawerState.open() }}) { Icon(Icons.Default.Menu,"Home menu",tint=Color.White) } }, colors=TopAppBarDefaults.topAppBarColors(containerColor=Navy)) },
                 bottomBar={ Column(Modifier.fillMaxWidth().background(Navy).padding(vertical=9.dp), horizontalAlignment=Alignment.CenterHorizontally) {
                     Text("MUMO BRANDS  •  Quality and perfection",color=Color.White,fontWeight=FontWeight.SemiBold,fontSize=12.sp)
                     Text("☎ 0741 167 612   •   Bazaar House (Kwa Kaswii), Kitui Stage, Kibwezi Town",color=Color.White,fontSize=10.sp)
-                    Text("Infinity Cyber Technologies  •  infinitycybertech@gmail.com  •  +254889001",color=Color.White,fontSize=9.sp)
+                    Text("Infinity Cyber Technologies",color=Color.White,fontSize=10.sp,fontWeight=FontWeight.SemiBold)
+                    Text("infinitycybertech@gmail.com  •  +254740889001",color=Color.White,fontSize=9.sp)
                 } }) { pad ->
-                Box(Modifier.padding(pad).fillMaxSize().background(Soft)) {
+                Box(Modifier.padding(pad).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     when(page) {
                         "Dashboard" -> Dashboard(db,refresh,{showOrder=true},{showStock=true},{page=it})
                         "New Orders" -> OrderRecordsPage(db,refresh,{showOrder=true},{id-> printOrder(activity,db.orderDetails(id)) },{id->db.deleteRecord("orders",id);refresh++})
@@ -248,6 +263,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     val total=totals.sumOf{it.first};val paid=totals.sumOf{it.second};val balance=(total-paid).coerceAtLeast(0.0)
     Column(Modifier.fillMaxSize().padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
         Text("Payments & reconciliation",fontSize=20.sp,fontWeight=FontWeight.Bold)
+        Text("KES • All entries below are recorded payments, not live M-PESA or bank transactions. Verify the provider receipt before saving.",fontSize=11.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.7f))
         StatCard("Order value","KES %.2f".format(total),Icons.Default.Payments)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){StatCard("Paid","KES %.2f".format(paid),Icons.Default.AccountBalanceWallet,Modifier.weight(1f));StatCard("Balance","KES %.2f".format(balance),Icons.Default.PendingActions,Modifier.weight(1f))}
         Text("Record a payment",fontWeight=FontWeight.Bold)
@@ -259,7 +275,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
             items(db.paymentRows()){p->Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)){Column(Modifier.padding(10.dp)){Text("Order #${p[1]} • ${p[2]}",fontWeight=FontWeight.SemiBold);Text("KES ${p[3]} • ${p[4]} • Ref: ${p[5].ifBlank{"—"}}",fontSize=12.sp);Text("${p[6]} • ${p[7]}",fontSize=11.sp)}}}
         }
     }
-    if(selected>0) AlertDialog(onDismissRequest={selected=0},title={Text("Record payment for order #$selected")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Field("Amount (KES)",amount){amount=it};Text("Payment method");Row{listOf("M-PESA","Cash","Bank","Card","Other").forEach{FilterChip(selected=method==it,onClick={method=it},label={Text(it)})}};Field("Transaction / receipt reference (optional)",reference){reference=it};if(error.isNotBlank())Text(error,color=Magenta)}},confirmButton={Button(onClick={try{db.recordPayment(selected,amount.toDoubleOrNull()?:Double.NaN,method,reference);selected=0;onRefresh()}catch(e:Exception){error=e.message?: "Payment could not be saved"}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save payment")}},dismissButton={TextButton(onClick={selected=0}){Text("Cancel")}})
+    if(selected>0) AlertDialog(onDismissRequest={selected=0},title={Text("Record payment for order #$selected")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Field("Amount (KES)",amount){amount=it};Text("Payment method (record only)");Row{listOf("M-PESA","Cash","Bank","Card","Other").forEach{FilterChip(selected=method==it,onClick={method=it},label={Text(it)})}};Field("Provider receipt / transaction reference",reference){reference=it};Text("For M-PESA, enter the exact receipt code only after confirming the payment in the official provider channel.",fontSize=11.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.7f));if(error.isNotBlank())Text(error,color=Magenta)}},confirmButton={Button(onClick={try{db.recordPayment(selected,amount.toDoubleOrNull()?:Double.NaN,method,reference);selected=0;onRefresh()}catch(e:Exception){error=e.message?: "Payment could not be saved"}},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save payment")}},dismissButton={TextButton(onClick={selected=0}){Text("Cancel")}})
 }
 @Composable fun InfoPage(title:String,body:String){Column(Modifier.padding(20.dp)){Text(title,fontSize=21.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.height(12.dp));Text(body,color=Ink.copy(alpha=.75f))}}
 @Composable fun EmptyState(title:String,body:String){Column(Modifier.fillMaxWidth().padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.Inventory2,null,tint=Magenta,modifier=Modifier.size(38.dp));Text(title,fontWeight=FontWeight.Bold);Text(body,fontSize=12.sp,color=Ink.copy(alpha=.6f))}}
@@ -308,7 +324,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
 
 @Composable fun OrderEditDialog(d:List<String>,close:()->Unit,save:(String,String,String,String,String,Int,String,String,Double,Double)->Unit) {
     var c by remember{mutableStateOf(d[1])};var p by remember{mutableStateOf(d[2])};var item by remember{mutableStateOf(d[3])};var size by remember{mutableStateOf(d[4])};var color by remember{mutableStateOf(d[5])};var qty by remember{mutableStateOf(d[6])};var service by remember{mutableStateOf(d[7])};var due by remember{mutableStateOf(d[8])};var total by remember{mutableStateOf(d[9])};var paid by remember{mutableStateOf(d[10])}
-    AlertDialog(onDismissRequest=close,title={Text("Edit order #${d[0]}")},text={Column(Modifier.heightIn(max=440.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Field("Customer",c){c=it};Field("Phone",p){p=it};Field("Product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Service",service){service=it};Field("Due date",due){due=it};Field("Total KES",total){total=it};Field("Paid KES",paid){paid=it}}},confirmButton={Button(onClick={save(c,p,item,size,color,qty.toIntOrNull()?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0)},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save changes")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})
+    AlertDialog(onDismissRequest=close,title={Text("Edit order #${d[0]}")},text={Column(Modifier.heightIn(max=440.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Field("Customer",c){c=it};Field("Phone",p){p=it};Field("Product",item){item=it};Field("Size",size){size=it};Field("Colour",color){color=it};Field("Quantity",qty){qty=it};Field("Service",service){service=it};Field("Due date",due){due=it};Field("Total KES",total){total=it};Text("Payments already recorded: KES $paid",fontWeight=FontWeight.SemiBold,color=Magenta);Text("To add a deposit or settle the balance, use the Payments menu. Editing an order will not rewrite its payment history.",fontSize=11.sp,color=Ink.copy(alpha=.7f))}},confirmButton={Button(onClick={save(c,p,item,size,color,qty.toIntOrNull()?:1,service,due,total.toDoubleOrNull()?:0.0,paid.toDoubleOrNull()?:0.0)},colors=ButtonDefaults.buttonColors(containerColor=Magenta)){Text("Save changes")}},dismissButton={TextButton(onClick=close){Text("Cancel")}})
 }
 
 @Composable fun StockRecordsPage(db:BusinessDb,refresh:Int,add:()->Unit,move:(Int,String,Int,String)->Unit,delete:(Int)->Unit) {
