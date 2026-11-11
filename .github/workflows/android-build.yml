@@ -19,25 +19,28 @@ jobs:
           java-version: '17'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Locate Android project
+      - name: Extract uploaded Android project
         shell: bash
         run: |
           set -euo pipefail
-          if find . -path '*/.gradle' -prune -o -name settings.gradle.kts -print -quit | grep -q .; then
-            PROJECT_SETTINGS="$(find . -path '*/.gradle' -prune -o -name settings.gradle.kts -print -quit)"
-            PROJECT_DIR="$(dirname "$PROJECT_SETTINGS")"
-          else
-            echo "No settings.gradle.kts found in repository."
+          mkdir -p source
+          unzip -q MumoBrandsAndroid-v1.1.1.zip -d source
+          PROJECT_SETTINGS="$(find source -name settings.gradle.kts -print -quit)"
+          if [ -z "$PROJECT_SETTINGS" ]; then
+            echo "ZIP does not contain settings.gradle.kts"
+            find source -maxdepth 4 -type f | head -100
             exit 1
           fi
+          PROJECT_DIR="$(dirname "$PROJECT_SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project located at $PROJECT_DIR"
       - name: Build debug APK
         run: |
           cd "$PROJECT_DIR"
           gradle assembleDebug
-      - name: Locate and upload debug APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: Mumo-Brands-debug-apk
-          path: '**/build/outputs/apk/debug/*.apk'
+          path: 'source/**/build/outputs/apk/debug/*.apk'
           if-no-files-found: error
