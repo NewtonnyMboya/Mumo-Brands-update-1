@@ -216,7 +216,8 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
             }
         }
     )
-    }\n    if(showOrder) OrderDialog({showOrder=false},{ c,p,i,s,col,q,svc,due,total,paid -> db.addOrder(c,p,i,s,col,q,svc,due,total,paid);refresh++ })
+    }
+    if(showOrder) OrderDialog({showOrder=false},{ c,p,i,s,col,q,svc,due,total,paid -> db.addOrder(c,p,i,s,col,q,svc,due,total,paid);refresh++ })
     if(showStock) StockDialog({showStock=false},{i,cat,s,col,q,r->db.addStock(i,cat,s,col,q,r);refresh++})
 }
 
