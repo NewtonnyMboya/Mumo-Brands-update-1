@@ -316,7 +316,7 @@ fun pinDigest(pin:String,salt:ByteArray):String { val spec=PBEKeySpec(pin.toChar
     edit?.let { d ->
         OrderEditDialog(d,{edit=null}) { c,p,item,size,color,qty,service,due,total,paid ->
             db.updateOrder(d[0].toInt(),c,p,item,size,color,qty,service,due,total,paid)
-            edit=null; refresh++
+            edit=null // Closing the dialog triggers recomposition and reloads the order list
         }
     }
     if(deleteId>0) AlertDialog(onDismissRequest={deleteId=0},title={Text("Delete order?")},text={Text("This permanently deletes the selected order record.")},confirmButton={TextButton(onClick={delete(deleteId);deleteId=0}){Text("Delete",color=Magenta)}},dismissButton={TextButton(onClick={deleteId=0}){Text("Cancel")}})
